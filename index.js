@@ -5,12 +5,14 @@ var program = require('commander');
 
 function Node(name) {
     this.name = name;
-    this.value = 0;
+    this.value1 = 0;
+    this.value2 = 0;
     this.children = {};
 }
 
-Node.prototype.add = function(frames, value) {
-  this.value += value;
+Node.prototype.add = function(frames, value1, value2) {
+  this.value1 += value1;
+  this.value2 += value2;
   if(frames && frames.length > 0) {
     var head = frames[0];
     var child = this.children[head];
@@ -19,14 +21,15 @@ Node.prototype.add = function(frames, value) {
       this.children[head] = child;
     }
     frames.splice(0, 1);
-    child.add(frames, value);
+    child.add(frames, value1, value2);
   }
 }
 
 Node.prototype.serialize = function() {
   var res = {
     'name': this.name,
-    'value': this.value
+    'value1': this.value1,
+    'value2': this.value2
   }
 
   var children = []
@@ -152,9 +155,9 @@ function folded(filename) {
     if (err) throw err;
     var root = new Node('root');
     data.split("\n").map(function (val) {
-      var regex = /(.*) (.*)/g;
+      var regex = /(.*) (.*) (.*)/g;
       var matches = regex.exec(val);
-      if (matches) root.add(matches[1].split(";"), parseInt(matches[2]));
+      if (matches) root.add(matches[1].split(";"), parseInt(matches[2]), parseInt(matches[3]));
     });
     console.log(JSON.stringify(root.serialize(), null, 2));
   });
