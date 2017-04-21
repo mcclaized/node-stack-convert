@@ -5,14 +5,21 @@ var program = require('commander');
 
 function Node(name) {
     this.name = name;
-    this.value1 = 0;
-    this.value2 = 0;
+    this.value = 0;
+    this.diff = 0;
+    this.timeshare = 0;
     this.children = {};
 }
 
-Node.prototype.add = function(frames, value1, value2) {
-  this.value1 += value1;
-  this.value2 += value2;
+Node.prototype.add = function(frames, value, diff, delta) {
+  this.value += value;
+  this.diff = diff;
+  if (delta){
+    this.timeshare += value * diff
+  } else {
+    this.timeshare += value
+  }
+
   if(frames && frames.length > 0) {
     var head = frames[0];
     var child = this.children[head];
@@ -21,21 +28,23 @@ Node.prototype.add = function(frames, value1, value2) {
       this.children[head] = child;
     }
     frames.splice(0, 1);
-    child.add(frames, value1, value2);
+    child.add(frames, value, diff, delta);
   }
 }
 
-Node.prototype.serialize = function() {
+Node.prototype.serialize = function(timestep) {
   var res = {
     'name': this.name,
-    'value1': this.value1,
-    'value2': this.value2
+    'value': this.value,
+    'diff': this.diff,
+    'timeshare': this.timeshare,
+    'tottime': this.timeshare * timestep
   }
 
   var children = []
 
   for(var key in this.children) {
-    children.push(this.children[key].serialize());
+    children.push(this.children[key].serialize(timestep));
   }
 
   if(children.length > 0) res['children'] = children;
@@ -150,16 +159,32 @@ function raw(filename, live) {
   });
 }
 
-function folded(filename) {
+function folded(filename, negate) {
   fs.readFile(filename, 'utf8', function (err, data) {
     if (err) throw err;
     var root = new Node('root');
+    var time;
+    var delta = false;
     data.split("\n").map(function (val) {
+      if (val.startsWith("REALTIME:")){
+        time = parseFloat(val.split(' ')[1]);
+        return true;
+      } else if (val.startsWith("TIMEDELTA:")){
+        time = parseFloat(val.split(' ')[1]);
+        delta = true;
+        return true;
+      }
       var regex = /(.*) (.*) (.*)/g;
       var matches = regex.exec(val);
-      if (matches) root.add(matches[1].split(";"), parseInt(matches[2]), parseInt(matches[3]));
+      if (matches){
+        var value = parseInt(matches[2]);
+        var diff = parseInt(matches[3]);
+        if (negate) diff = diff * -1;
+        root.add(matches[1].split(";"), value, diff, delta);
+      } 
     });
-    console.log(JSON.stringify(root.serialize(), null, 2));
+    var timestep = time / root.timeshare;
+    console.log(JSON.stringify(root.serialize(timestep), null, 2));
   });
 }
 
@@ -168,9 +193,10 @@ program
   .arguments('<filename>')
   .option('-f, --folded', 'Input is a folded stack.')
   .option('-l, --live', 'Output includes a timestamp dimension for live flame graphs.')
+  .option('-n, --negate', 'Flip the sign of the diffs')
   .action(function(filename, options) {
     if(options.folded) {
-      folded(filename);
+      folded(filename, options.negate);
     } else if (options.live) {
       raw(filename, true);
     } else {
